@@ -1,30 +1,38 @@
+<p>Note: Unlike most blog-level configuration settings, the settings below
+are also user-specific. To enable cross-posting for a particular user, they
+will need to have temporary rights to edit the weblog configuration so they
+can assign their Vox username and password. Once that has been set, you
+can restore their permission settings.</p>
+
+<input type="hidden" name="vox_apilink" value="" />
+
 <div class="setting">
     <div class="label">
-        <label for="vox_username"><MT_TRANS phrase="Username:"></label>
+        <label for="vox_username"><MT_TRANS phrase="Username">:</label>
     </div>
     <div class="field">
         <input type="text" name="vox_username" id="vox_username" value="<TMPL_VAR NAME="VOX_USERNAME" ESCAPE=HTML>"><br/>
-        <p><MT_TRANS phrase="Login name to the Vox."></p>
+        <p><MT_TRANS phrase="Your Vox user name (an email address)."></p>
     </div> 
 </div>
 
 <div class="setting">
     <div class="label">
-        <label for="vox_password"><MT_TRANS phrase="Password:"></label>
+        <label for="vox_password"><MT_TRANS phrase="Password">:</label>
     </div>
     <div class="field">
-        <input type="text" name="vox_password" id="vox_password" value="<TMPL_VAR NAME="VOX_PASSWORD" ESCAPE=HTML>"><br/>
-        <p><MT_TRANS phrase="Password of the Vox."></p>
+        <input type="password" name="vox_password" id="vox_password" value="<TMPL_VAR NAME="VOX_PASSWORD" ESCAPE=HTML>"><br/>
+        <p><MT_TRANS phrase="Your Vox password."></p>
     </div> 
 </div>
 
 <div class="setting">
     <div class="label">
-        <label for="vox_url"><MT_TRANS phrase="vox_url:"></label>
+        <label for="vox_url"><MT_TRANS phrase="URL">:</label>
     </div>
     <div class="field">
         <input type="text" name="vox_url" id="vox_url" value="<TMPL_VAR NAME="VOX_URL" ESCAPE=HTML>"><br/>
-        <p><MT_TRANS phrase="URL of your Vox blog."></p>
+        <p><MT_TRANS phrase="URL for your Vox blog."></p>
     </div> 
 </div>
 
@@ -33,7 +41,7 @@
         &nbsp;
     </div>
     <div class="field">
-        <input type="checkbox" name="always_post" id="always_post" value="1" <TMPL_IF NAME="ALWAYS_POST">checked</TMPL_IF>>&nbsp;<MT_TRANS phrase="Post to the Vox always">
+        <input type="checkbox" name="always_post" id="always_post" value="1" <TMPL_IF NAME="ALWAYS_POST">checked="checked"</TMPL_IF> />&nbsp;<MT_TRANS phrase="Crosspost by default">
     </div> 
 </div>
 

@@ -39,6 +39,8 @@ MT->add_plugin($plugin);
 
 sub add_input_field {
     my ($eh, $app, $tmpl) = @_;
+    return unless $app->mode eq 'view';
+
     my $q = $app->param;
     my $blog_id = $q->param('blog_id');
     my $config = $plugin->get_config_hash('blog:'.$blog_id.':user:'.$app->user->id);
@@ -51,7 +53,8 @@ sub add_input_field {
     }
     my $already_posted = $entry && (($entry->tangent_cache || '') =~ m!http://www.vox.com!);
 
-    my $checked = "checked=\"checked\""
+    my $checked = '';
+    $checked = "checked=\"checked\""
         if $config->{always_post} || $already_posted;
     my $label;
     if ($already_posted) {

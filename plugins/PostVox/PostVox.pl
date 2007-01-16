@@ -8,7 +8,7 @@ use MT 3.3;
 use constant NS_DC => 'http://purl.org/dc/elements/1.1/';
 
 use base 'MT::Plugin';
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 my $plugin = MT::Plugin::PostVox->new({
     name            => 'Post to Vox',
@@ -27,6 +27,10 @@ my $plugin = MT::Plugin::PostVox->new({
         'CMSPostSave.entry' => {
             priority => 9,
             code => \&hdlr_post_save
+        },
+        'APIPostSave.entry' => {
+            priority => 9,
+            code => \&hdlr_api_post_save
         },
         'MT::App::CMS::AppTemplateSource.entry_actions' => {
             priority => 9,
@@ -71,17 +75,28 @@ sub add_input_field {
     1; 
 }
 
+sub hdlr_api_post_save {
+    return $plugin->_cross_post(@_);
+}
+
 sub hdlr_post_save {
     my ($cb, $app, $obj, $orig) = @_;
     my $q = $app->param;
-    my $blog_id = $q->param('blog_id');
-    my $config = $plugin->get_config_hash('blog:'.$blog_id.':user:'.$app->user->id);
+    return $obj unless $q->param('post_to_vox');
+    return $plugin->_cross_post($cb, $app, $obj, $orig);
+}
+
+sub _cross_post {
+    my $self = shift;
+    my ($cb, $app, $obj, $orig) = @_;
+    my $blog_id = $obj->blog_id;
+    my $user_id = $obj->author_id;
+    my $config = $plugin->get_config_hash('blog:'.$blog_id.':user:'.$user_id);
 
     return $obj unless ( $config->{vox_username} && $config->{vox_password} && $config->{vox_url} );
 
     require MT::Entry;
     return $obj if $obj->status != MT::Entry::RELEASE();
-    return $obj unless $q->param('post_to_vox');
 
     # APILINK
     my $apilink = $config->{vox_apilink};
@@ -113,7 +128,7 @@ sub hdlr_post_save {
     require XML::Atom::Entry;
     my $enc = MT->instance->config('PublishCharset') || undef;
     my $entry = XML::Atom::Entry->new;
-    $entry->title( MT::I18N::encode_text( $obj->title , 'utf-8', $enc ) );
+    $entry->title( MT::I18N::encode_text( $obj->title , $enc, 'utf-8' ) );
 
     # Apply filters to entry text and extended entry if available
     my $text = $obj->text;
@@ -124,14 +139,14 @@ sub hdlr_post_save {
     push @$filters, '__default__' unless @$filters;
     $text = MT->apply_text_filters($text, $filters);
     $text_more = MT->apply_text_filters($text_more, $filters) if $text_more ne '';
-    $text .= "\n\n" . $text_more if $text_more ne '';
+    $text .= "\n\n<a href='" . $obj->permalink . "' target='_blank'>read more...</a>" if $text_more ne '';
 
-    $entry->content( MT::I18N::encode_text( $text, 'utf-8', $enc ) );
+    $entry->content( MT::I18N::encode_text( $text, $enc, 'utf-8' ) );
 
     my @tags = $plugin->_get_entry_tags( $obj );
     my $dc = XML::Atom::Namespace->new( dc => NS_DC );
     foreach my $tag (@tags) {
-        $entry->add($dc, 'subject', MT::I18N::encode_text( $tag->name, 'utf-8', $enc ) );
+        $entry->add($dc, 'subject', MT::I18N::encode_text( $tag->name, $enc, 'utf-8' ) );
     }
 
     # CLIENT

@@ -8,7 +8,7 @@ use MT 3.3;
 use constant NS_DC => 'http://purl.org/dc/elements/1.1/';
 
 use base 'MT::Plugin';
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 my $plugin = MT::Plugin::PostVox->new({
     name            => 'Post to Vox',
@@ -21,6 +21,7 @@ my $plugin = MT::Plugin::PostVox->new({
         ['vox_password'],
         ['vox_url'],
         ['always_post'],
+        ['excerpt_only'],
     ]),
     blog_config_template => 'config.tmpl',
     callbacks       => {
@@ -83,6 +84,7 @@ sub hdlr_post_save {
     my ($cb, $app, $obj, $orig) = @_;
     my $q = $app->param;
     return $obj unless $q->param('post_to_vox');
+    
     return $plugin->_cross_post($cb, $app, $obj, $orig);
 }
 
@@ -92,6 +94,7 @@ sub _cross_post {
     my $blog_id = $obj->blog_id;
     my $user_id = $obj->author_id;
     my $config = $plugin->get_config_hash('blog:'.$blog_id.':user:'.$user_id);
+    my $blog = MT::Blog->load($blog_id);
 
     return $obj unless ( $config->{vox_username} && $config->{vox_password} && $config->{vox_url} );
 
@@ -130,23 +133,34 @@ sub _cross_post {
     my $entry = XML::Atom::Entry->new;
     $entry->title( MT::I18N::encode_text( $obj->title , $enc, 'utf-8' ) );
 
-    # Apply filters to entry text and extended entry if available
-    my $text = $obj->text;
-    my $text_more = $obj->text_more;
-    $text = '' unless defined $text;
-    $text_more = '' unless defined $text_more;
-    my $filters = $obj->text_filters;
-    push @$filters, '__default__' unless @$filters;
-    $text = MT->apply_text_filters($text, $filters);
-    $text_more = MT->apply_text_filters($text_more, $filters) if $text_more ne '';
-    $text .= "\n\n<a href='" . $obj->permalink . "' target='_blank'>read more...</a>" if $text_more ne '';
+    my $text = '';
+    my $excerpt_only = $config->{excerpt_only} || 0;
+
+    if ($excerpt_only) {
+        # Uses entry excerpt only
+        my $words = $blog->words_in_excerpt;
+        $words = 40 unless defined $words && $words ne '';
+        $text = $obj->get_excerpt($words);
+        $text .= "<br/><br/><a href='" . $obj->permalink . "' target='_blank'>read more...</a>";
+    } else {
+        # Apply filters to entry text and extended entry if available
+        $text = $obj->text;
+        my $text_more = $obj->text_more;
+        $text = '' unless defined $text;
+        $text_more = '' unless defined $text_more;
+        my $filters = $obj->text_filters;
+        push @$filters, '__default__' unless @$filters;
+        $text = MT->apply_text_filters($text, $filters);
+        $text_more = MT->apply_text_filters($text_more, $filters) if $text_more ne '';
+        $text .= "\n\n<a href='" . $obj->permalink . "' target='_blank'>read more...</a>" if $text_more ne '';
+    }
 
     $entry->content( MT::I18N::encode_text( $text, $enc, 'utf-8' ) );
 
-    my @tags = $plugin->_get_entry_tags( $obj );
+    my @tags = $obj->tags;
     my $dc = XML::Atom::Namespace->new( dc => NS_DC );
     foreach my $tag (@tags) {
-        $entry->add($dc, 'subject', MT::I18N::encode_text( $tag->name, $enc, 'utf-8' ) );
+        $entry->add($dc, 'subject', MT::I18N::encode_text( $tag, $enc, 'utf-8' ) );
     }
 
     # CLIENT
@@ -193,26 +207,6 @@ sub _find_apilink_rsd {
     }) unless $apilink;
 
     $apilink;
-}
-
-sub _get_entry_tags {
-    my $self = shift;
-    my($entry) = @_;
-
-    return () unless $entry;
-
-    require MT::ObjectTag;
-    require MT::Entry;
-    require MT::Tag;
-    my $iter = MT::Tag->load_iter(undef, { 'sort' => 'name',
-        join => ['MT::ObjectTag', 'tag_id',
-        { object_id => $entry->id, blog_id => $entry->blog_id, object_datasource => MT::Entry->datasource }, { unique => 1 } ]});
-    my @tags;
-    while (my $tag = $iter->()) {
-        next if $tag->is_private;
-        push @tags, $tag;
-    }
-    return @tags;
 }
 
 # Since these settings are blog *and* user specific, automatically assign

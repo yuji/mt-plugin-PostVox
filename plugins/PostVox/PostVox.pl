@@ -8,7 +8,7 @@ use MT 3.3;
 use constant NS_DC => 'http://purl.org/dc/elements/1.1/';
 
 use base 'MT::Plugin';
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 my $plugin = MT::Plugin::PostVox->new({
     name            => 'Post to Vox',
@@ -109,17 +109,10 @@ sub _cross_post {
         $new_post = 0;
     } elsif (!$apilink) {
         my $url = $config->{vox_url};
-        if ( $url !~ m!rsd\.xml$! ) {
-            if ( $url =~ m!/$! ) {
-                $url .= 'rsd.xml';
-            } else {
-                $url .= '/rsd.xml';
-            }
-        }
         if ($url !~ m!^http://!i ) {
             $url = 'http://'.$url;
         }
-        $apilink = $plugin->_find_apilink_rsd( $url );
+        $apilink = $plugin->_find_apilink( $url );
         if ($apilink) {
             $config->{vox_apilink} = $apilink;
             $plugin->set_config_value('vox_apilink', $apilink, 'blog:'.$blog_id.':user:'.$app->user->id);
@@ -192,21 +185,20 @@ sub _cross_post {
 }
 
 #TODO: other API support
-sub _find_apilink_rsd {
+sub _find_apilink {
     my $self = shift;
-    my ($rsd_uri) = @_;
+    my ($uri) = @_;
 
-    require XML::Simple;
-    require LWP::Simple;
-    my $xml_data = LWP::Simple::get($rsd_uri);
-    my $xml     = XML::Simple::XMLin( $xml_data );
-    my $apilink = $xml->{service}->{apis}->{api}->{Atom}->{apiLink};
-
-    return 0, MT->log({
-        message => "Couldn't retrieve 'apiLink' from $xml",
-    }) unless $apilink;
-
-    $apilink;
+    require XML::Atom::Feed;
+    my $feed = XML::Atom::Feed->new(URI->new($uri));
+    return undef unless $feed;
+    my @links = $feed->link;
+    for my $link (@links) {
+        if ($link->rel eq 'service.post') {
+            return $link->href;
+        }
+    }
+    return undef;
 }
 
 # Since these settings are blog *and* user specific, automatically assign

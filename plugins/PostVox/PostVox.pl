@@ -1,18 +1,20 @@
+# $id$
 package MT::Plugin::PostVox;
 
 use strict;
 use warnings;
 
-use MT 3.3;
+use MT;
+use XML::Atom;
 
 use constant NS_DC => 'http://purl.org/dc/elements/1.1/';
 
 use base 'MT::Plugin';
-our $VERSION = '0.05';
+our $VERSION = '0.07';
 
-my $plugin = MT::Plugin::PostVox->new({
+my $plugin = __PACKAGE__->new({
     name            => 'Post to Vox',
-    description     => 'Automatic cross-posting to Vox.',
+    description     => 'Automatic cross-posting to Vox. (This version supports only MT4.)',
     author_name     => 'Six Apart, Ltd.',
     author_link     => 'http://www.sixapart.com/',
     version         => $VERSION,
@@ -24,56 +26,52 @@ my $plugin = MT::Plugin::PostVox->new({
         ['excerpt_only'],
     ]),
     blog_config_template => 'config.tmpl',
-    callbacks       => {
-        'CMSPostSave.entry' => {
-            priority => 9,
-            code => \&hdlr_post_save
-        },
-        'APIPostSave.entry' => {
-            priority => 9,
-            code => \&hdlr_api_post_save
-        },
-        'MT::App::CMS::AppTemplateSource.entry_actions' => {
-            priority => 9,
-            code => \&add_input_field
-        },
-    },
 });
 
 MT->add_plugin($plugin);
+MT->add_callback('MT::App::CMS::template_param.edit_entry', 9, $plugin, \&add_input_field);
+MT->add_callback('CMSPostSave.entry', 9, $plugin, \&hdlr_post_save);
+MT->add_callback('APIPostSave.entry', 9, $plugin, \&hdlr_api_post_save);
 
 sub add_input_field {
-    my ($eh, $app, $tmpl) = @_;
-    return unless $app->mode eq 'view';
-
+    my ($eh, $app, $param, $tmpl) = @_;
+    return unless UNIVERSAL::isa($tmpl, 'MT::Template');
+ 
     my $q = $app->param;
     my $blog_id = $q->param('blog_id');
-    my $config = $plugin->get_config_hash('blog:'.$blog_id.':user:'.$app->user->id);
+    my $config = $plugin->get_config_hash('blog:'.$blog_id.':user:'.$app->user->id); 
     return unless ( $config->{vox_username} || $config->{vox_password} );
 
+    my $entry_class = MT->model('entry');
     my $entry_id = $app->param('id');
     my $entry;
     if ($entry_id) {
-        $entry = MT::Entry->load($entry_id, { cached_ok => 1 });
+        $entry = $entry_class->load($entry_id, { cached_ok => 1 });
     }
+    my $innerHTML;
     my $already_posted = $entry && (($entry->tangent_cache || '') =~ m!http://www.vox.com!);
-
-    my $checked = '';
-    $checked = "checked=\"checked\""
-        if $config->{always_post} || $already_posted;
-    my $label;
     if ($already_posted) {
         if ($entry->tangent_cache =~ m!(http://www.vox.com\S+)!i) {
-            my $apilink = $1;
-            if ($apilink =~ m!/asset_id=([a-e0-9]+)!) {
-                my $asset_id = $1;
-                $label = $plugin->translate('Update <a href="[_1]" target="_blank">Vox post</a>', "http://www.vox.com/compose/#id:$asset_id");
-            }
+            my @parts = split '/', $1;
+            my $asset_id = pop @parts;
+            $innerHTML = "Update <a href='http://www.vox.com/compose/#id:$asset_id' target='_blank'> Vox post</a>";
         }
+    } else {
+        my $checked = '';
+        $checked = "checked=\"checked\""
+            if $config->{always_post};
+        $innerHTML = "<input type='checkbox' id='allow_postvox' name='allow_postvox' $checked value='1' /> Cross post to Vox";
     }
-    $label ||= '<MT_TRANS phrase="Cross-post to Vox">';
-    $$tmpl =~ s!(<div class="button-bar">)!<p><input type="checkbox" id="post_to_vox" name="post_to_vox" $checked /> <label for="post_to_vox">$label</label></p>\n$1!is;
-    1; 
+
+    my $host_node = $tmpl->getElementById('status')
+        or return $app->error('cannot get the status block');
+    my $block_node = $tmpl->createElement('app:setting', {
+        id => 'allow_postvox',
+        label => 'Cross Posting',  })
+        or return $app->error('cannot create the element');
+    $block_node->innerHTML( $innerHTML );
+    $tmpl->insertBefore($block_node, $host_node)
+        or return $app->error('failed to insertBefore.');
 }
 
 sub hdlr_api_post_save {
@@ -82,9 +80,7 @@ sub hdlr_api_post_save {
 
 sub hdlr_post_save {
     my ($cb, $app, $obj, $orig) = @_;
-    my $q = $app->param;
-    return $obj unless $q->param('post_to_vox');
-    
+    return $obj unless $app->param('allow_postvox');
     return $plugin->_cross_post($cb, $app, $obj, $orig);
 }
 
@@ -98,7 +94,7 @@ sub _cross_post {
 
     return $obj unless ( $config->{vox_username} && $config->{vox_password} && $config->{vox_url} );
 
-    require MT::Entry;
+    my $entry_class = MT->model('entry');
     return $obj if $obj->status != MT::Entry::RELEASE();
 
     # APILINK
@@ -112,12 +108,12 @@ sub _cross_post {
         if ($url !~ m!^http://!i ) {
             $url = 'http://'.$url;
         }
+
         $apilink = $plugin->_find_apilink( $url );
-        if ($apilink) {
-            $config->{vox_apilink} = $apilink;
-            $plugin->set_config_value('vox_apilink', $apilink, 'blog:'.$blog_id.':user:'.$app->user->id);
-        }
         return $obj unless $apilink;
+        
+        $config->{vox_apilink} = $apilink;
+        $plugin->set_config_value('vox_apilink', $apilink, 'blog:'.$blog_id.':user:'.$app->user->id);
     }
 
     # ENTRY
@@ -174,7 +170,6 @@ sub _cross_post {
         $obj->tangent_cache( join ' ', @t );
         $obj->save;
     } else {
-        #FIXME:Edit not support
         my $ret = $api->updateEntry( $apilink, $entry )
             or return MT->log({
                 message => $api->errstr,

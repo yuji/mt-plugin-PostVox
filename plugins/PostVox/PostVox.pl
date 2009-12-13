@@ -4,19 +4,19 @@ package MT::Plugin::PostVox;
 use strict;
 use warnings;
 
-use MT 4.0;
+use MT;
 use XML::Atom;
 
 use constant NS_DC => 'http://purl.org/dc/elements/1.1/';
 
 use base 'MT::Plugin';
-our $VERSION = '0.08';
+our $VERSION = '1.0';
 
 my $plugin = __PACKAGE__->new(
     {
         name => 'Post to Vox',
         description =>
-          'Automatic cross-posting to Vox. (This version supports only MT4.)',
+          'Automatic cross-posting to Vox.',
         author_name => 'Six Apart, Ltd.',
         author_link => 'http://www.sixapart.com/',
         version     => $VERSION,
@@ -72,13 +72,14 @@ sub add_input_field {
 "<input type='checkbox' id='allow_postvox' name='allow_postvox' $checked value='1' /> Cross post to Vox";
     }
 
-    my $host_node = $tmpl->getElementById('status')
+    my $host_node = $tmpl->getElementById('basename')
       or return $app->error('cannot get the status block');
     my $block_node = $tmpl->createElement(
         'app:setting',
         {
-            id    => 'allow_postvox',
-            label => 'Cross Posting',
+            id          => 'allow_postvox',
+            label       => 'Cross Posting',
+            label_class => "top-label"
         }
     ) or return $app->error('cannot create the element');
     $block_node->innerHTML($innerHTML);
@@ -137,13 +138,10 @@ sub _cross_post {
         $plugin->set_config_value( 'vox_apilink', $apilink,
             'blog:' . $blog_id . ':user:' . $app->user->id );
     }
-
     # ENTRY
     require XML::Atom::Entry;
-    require MT::I18N;
-    my $enc = MT->instance->config('PublishCharset') || undef;
     my $entry = XML::Atom::Entry->new;
-    $entry->title( MT::I18N::encode_text( $obj->title, $enc, 'utf-8' ) );
+    $entry->title( Encode::encode_utf8($obj->title) );
 
     my $text = '';
     my $excerpt_only = $config->{excerpt_only} || 0;
@@ -178,13 +176,13 @@ sub _cross_post {
           if $text_more ne '';
     }
 
-    $entry->content( MT::I18N::encode_text( $text, $enc, 'utf-8' ) );
+    $entry->content( Encode::encode_utf8($text) );
 
     my @tags = $obj->tags;
     my $dc = XML::Atom::Namespace->new( dc => NS_DC );
     foreach my $tag (@tags) {
         $entry->add( $dc, 'subject',
-            MT::I18N::encode_text( $tag, $enc, 'utf-8' ) );
+            Encode::encode_utf8( $tag ) );
     }
 
     # CLIENT

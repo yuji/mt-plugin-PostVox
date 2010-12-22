@@ -16,7 +16,7 @@ my $plugin = __PACKAGE__->new(
     {
         name => 'Post to Vox',
         description =>
-          'Automatic cross-posting to Vox. This plugin development has been discontinued.',
+          '[DISCONTINUED]Automatic cross-posting to Vox.',
         author_name => 'Six Apart, Ltd.',
         author_link => 'http://www.sixapart.com/',
         version     => $VERSION,
